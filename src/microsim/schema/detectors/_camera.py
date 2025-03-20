@@ -69,7 +69,29 @@ class _Camera(SimBaseModel):
     # photodiode_size: float = 6.5
 
     def apply_em_gain(self, electron_image: npt.NDArray) -> npt.NDArray:
-        # default implementation does nothing
+        from scipy import stats
+
+        # Handle both 3D and 4D arrays
+        original_shape = electron_image.shape
+        if len(original_shape) == 4:  # (C, Z, Y, X)
+            # Reshape to 2D for processing
+            electron_image = electron_image.reshape(-1, *original_shape[1:])
+        
+        # FIXME: is there a more elegant way to deal with gamma rvs with shape = 0?
+        ind_zero = electron_image <= 0
+        electron_image[ind_zero] += 1
+        # gamma shape is input electrons / scale is EM gain
+        electron_image = stats.gamma.rvs(
+            electron_image.astype(float), 
+            scale=self.gain
+        )
+        electron_image[ind_zero] = 0
+        electron_image = np.round(electron_image).astype(int)
+
+        # Restore original shape if needed
+        if len(original_shape) == 4:
+            electron_image = electron_image.reshape(original_shape)
+
         return electron_image
 
     def apply_pre_quantization_binning(
@@ -225,15 +247,26 @@ class CameraEMCCD(_Camera):
     def apply_em_gain(self, electron_image: npt.NDArray) -> npt.NDArray:
         from scipy import stats
 
+        # Handle both 3D and 4D arrays
+        original_shape = electron_image.shape
+        if len(original_shape) == 4:  # (C, Z, Y, X)
+            # Reshape to 2D for processing
+            electron_image = electron_image.reshape(-1, *original_shape[1:])
+        
         # FIXME: is there a more elegant way to deal with gamma rvs with shape = 0?
         ind_zero = electron_image <= 0
         electron_image[ind_zero] += 1
         # gamma shape is input electrons / scale is EM gain
         electron_image = stats.gamma.rvs(
-            electron_image.astype(float), scale=self.em_gain
+            electron_image.astype(float), 
+            scale=self.em_gain
         )
         electron_image[ind_zero] = 0
         electron_image = np.round(electron_image).astype(int)
+
+        # Restore original shape if needed
+        if len(original_shape) == 4:
+            electron_image = electron_image.reshape(original_shape)
 
         return electron_image
 
